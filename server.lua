@@ -1,90 +1,94 @@
-local modemSide = "right"  -- The side where the wireless modem is connected
-local diskDriveSide = "left" -- The side where the disk drive is connected
+- v 000
+local modemSide = "right" -- The side where the wireless modem is connected
+local serverChannel = 123 -- The channel number used by the server
 local password = "secretpassword" -- The password required to access the cloud storage
-
-local channel = 123 -- Custom channel number, change it as per your preference
 
 -- Set up the wireless modem
 local modem = peripheral.wrap(modemSide)
-modem.open(channel)
+
+-- Function to save a file to a floppy disk
+local function saveFileToDisk(fileName, fileContents)
+  local diskPath = "/mnt/floppy/" .. fileName
+  local file = fs.open(diskPath, "w")
+  file.write(fileContents)
+  file.close()
+end
+
+-- Function to retrieve a file from a floppy disk
+local function retrieveFileFromDisk(fileName)
+  local diskPath = "/mnt/floppy/" .. fileName
+  if fs.exists(diskPath) then
+    local file = fs.open(diskPath, "r")
+    local fileContents = file.readAll()
+    file.close()
+    return fileContents
+  else
+    return nil
+  end
+end
+
+-- Function to list all files on the floppy disk
+local function listFilesOnDisk()
+  local fileList = ""
+  local files = fs.list("/mnt/floppy")
+  for _, fileName in ipairs(files) do
+    fileList = fileList .. fileName .. "\n"
+  end
+  return fileList
+end
 
 -- Wait for client connections
 while true do
   local event, modemSide, senderChannel, replyChannel, message, senderDistance = os.pullEvent("modem_message")
 
   -- Check if the correct channel is used
-  if senderChannel == channel then
-    if message == password then
-      -- Client provided correct password
-      modem.transmit(replyChannel, channel, "Access granted!")
-      
-      -- Allow client to perform cloud storage operations
-      while true do
-        modem.transmit(replyChannel, channel, "Enter command [upload/download/list/exit]:")
-        local _, _, _, _, command = os.pullEvent("modem_message")
-        
+  if senderChannel == serverChannel and message == password then
+    -- Client provided correct password
+    modem.transmit(replyChannel, senderChannel, "Access granted!")
+
+    -- Allow client to perform cloud storage operations
+    while true do
+      modem.transmit(replyChannel, senderChannel, "Enter command [upload/download/list/exit]:")
+      local event, modemSide, senderChannel, replyChannel, command, senderDistance = os.pullEvent("modem_message")
+
+      if senderChannel == serverChannel then
         if command == "upload" then
-          modem.transmit(replyChannel, channel, "Enter file name:")
-          local _, _, _, _, fileName = os.pullEvent("modem_message")
-          
-          modem.transmit(replyChannel, channel, "Enter file contents:")
-          local _, _, _, _, fileContents = os.pullEvent("modem_message")
-          
-          -- Save the file on the disk drive
-          local diskDrive = peripheral.wrap(diskDriveSide)
-          if diskDrive then
-            local file = fs.open(fileName, "w")
-            file.write(fileContents)
-            file.close()
-            
-            modem.transmit(replyChannel, channel, "File uploaded successfully.")
-          else
-            modem.transmit(replyChannel, channel, "Disk drive not found.")
-          end
+          modem.transmit(replyChannel, senderChannel, "Enter file name:")
+          local event, modemSide, senderChannel, replyChannel, fileName, senderDistance = os.pullEvent("modem_message")
+
+          modem.transmit(replyChannel, senderChannel, "Enter file contents:")
+          local event, modemSide, senderChannel, replyChannel, fileContents, senderDistance = os.pullEvent("modem_message")
+
+          -- Save the file to the floppy disk
+          saveFileToDisk(fileName, fileContents)
+
+          modem.transmit(replyChannel, senderChannel, "File uploaded successfully.")
         elseif command == "download" then
-          modem.transmit(replyChannel, channel, "Enter file name:")
-          local _, _, _, _, fileName = os.pullEvent("modem_message")
-          
-          -- Read the file from the disk drive
-          local diskDrive = peripheral.wrap(diskDriveSide)
-          if diskDrive then
-            local file = fs.open(fileName, "r")
-            if file then
-              local fileContents = file.readAll()
-              file.close()
-              
-              modem.transmit(replyChannel, channel, fileContents)
-            else
-              modem.transmit(replyChannel, channel, "File not found.")
-            end
+          modem.transmit(replyChannel, senderChannel, "Enter file name:")
+          local event, modemSide, senderChannel, replyChannel, fileName, senderDistance = os.pullEvent("modem_message")
+
+          -- Retrieve the file from the floppy disk
+          local fileContents = retrieveFileFromDisk(fileName)
+
+          if fileContents then
+            modem.transmit(replyChannel, senderChannel, fileContents)
           else
-            modem.transmit(replyChannel, channel, "Disk drive not found.")
+            modem.transmit(replyChannel, senderChannel, "File not found.")
           end
         elseif command == "list" then
-          -- List all files in the cloud storage
-          local diskDrive = peripheral.wrap(diskDriveSide)
-          if diskDrive then
-            local files = fs.list("/")
-            local fileList = ""
-            for _, file in ipairs(files) do
-              fileList = fileList .. file .. "\n"
-            end
-            
-            modem.transmit(replyChannel, channel, fileList)
-          else
-            modem.transmit(replyChannel, channel, "Disk drive not found.")
-          end
+          -- List all files on the floppy disk
+          local fileList = listFilesOnDisk()
+          modem.transmit(replyChannel, senderChannel, fileList)
         elseif command == "exit" then
-          -- Close the connection and exit the loop
-          modem.transmit(replyChannel, channel, "Connection closed.")
+          modem.transmit(replyChannel, senderChannel, "Connection closed.")
           break
         else
-          modem.transmit(replyChannel, channel, "Invalid command.")
+          modem.transmit(replyChannel, senderChannel, "Invalid command.")
         end
       end
-    else
-      -- Client provided incorrect password
-      modem.transmit(replyChannel, channel, "Access denied.")
     end
+  elseif senderChannel == serverChannel then
+    -- Client provided incorrect password
+    modem.transmit(replyChannel, senderChannel, "Access denied.")
   end
 end
