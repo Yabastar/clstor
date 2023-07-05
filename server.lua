@@ -1,4 +1,4 @@
-- v 000
+-- v 000
 local modemSide = "right" -- The side where the wireless modem is connected
 local serverChannel = 123 -- The channel number used by the server
 local password = "secretpassword" -- The password required to access the cloud storage
